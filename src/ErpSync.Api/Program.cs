@@ -47,7 +47,12 @@ builder.Services.ConfigureHttpJsonOptions(json =>
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddOpenApi(openApi => openApi.AddDocumentTransformer<ApiKeySecuritySchemeTransformer>());
+builder.Services.AddOpenApi(openApi =>
+{
+    openApi.AddDocumentTransformer<ApiDocumentTransformer>();
+    openApi.AddDocumentTransformer<ApiKeySecuritySchemeTransformer>();
+    openApi.AddOperationTransformer<ExampleOperationTransformer>();
+});
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -95,7 +100,18 @@ app.UseAuthorization();
 if (app.Configuration.GetValue("OpenApi:Enabled", app.Environment.IsDevelopment()))
 {
     app.MapOpenApi();
-    app.MapScalarApiReference(scalar => scalar.WithTitle("ERP Sync Connector API"));
+    app.MapScalarApiReference(scalar =>
+    {
+        scalar.WithTitle("ERP Sync Connector API")
+            .WithDefaultHttpClient(ScalarTarget.Shell, ScalarClient.Curl)
+            .AddPreferredSecuritySchemes(ApiKeyAuthenticationHandler.SchemeName);
+
+        // Only the local demo key, and only in Development; other environments start with an empty key box.
+        if (app.Environment.IsDevelopment())
+        {
+            scalar.AddApiKeyAuthentication(ApiKeyAuthenticationHandler.SchemeName, apiKey => apiKey.Value = "dev-local-key-change-me");
+        }
+    });
 }
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
