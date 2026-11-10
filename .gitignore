@@ -487,3 +487,6 @@ $RECYCLE.BIN/
 # Test results and coverage output
 TestResults/
 coverage-report/
+
+# Demo script logs
+.demo-logs/

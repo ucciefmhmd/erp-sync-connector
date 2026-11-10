@@ -1,0 +1,16 @@
+{
+  "name": "ERP Sync Connector",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0",
+  "forwardPorts": [5100, 5080],
+  "portsAttributes": {
+    "5100": { "label": "Connector API (Scalar at /scalar/v1)", "onAutoForward": "openBrowser" },
+    "5080": { "label": "Mock ERP", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "dotnet tool restore && dotnet build",
+  "postAttachCommand": "bash scripts/demo.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-dotnettools.csdevkit", "humao.rest-client"]
+    }
+  }
+}
