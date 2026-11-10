@@ -3,6 +3,7 @@
 [![CI](https://github.com/ucciefmhmd/erp-sync-connector/actions/workflows/ci.yml/badge.svg)](https://github.com/ucciefmhmd/erp-sync-connector/actions/workflows/ci.yml)
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ucciefmhmd/erp-sync-connector)
 
 A **.NET 10 integration service** that keeps a local copy of ERP master data (products, stock and customers) in sync, and delivers sales orders back to the ERP **without duplicates**, even when the ERP is slow, failing, or loses responses.
 
@@ -20,6 +21,20 @@ flowchart LR
     OW -- "create order<br/>(Idempotency-Key)" --> ERP
 ```
 
+**Demo:** in the API reference, list the synced products, place an order (`202 Accepted`, `pending`), then send the same request again. The idempotent replay returns the *same* order, which the background dispatcher has meanwhile delivered (`submitted`, ERP order `SO-000001`).
+
+![Demo: catalog query, order accepted, idempotent replay shows the order submitted to the ERP](docs/media/demo.gif)
+
+### Documentation
+
+| | |
+|---|---|
+| [Architecture](docs/architecture.md) | Context, container and code-structure diagrams, data model, sequence diagrams for every flow, and known gaps |
+| [Design patterns and trade-offs](docs/design-patterns.md) | Each pattern, where it lives in the code, why it's used, and what it costs |
+| [Architecture decision records](docs/adr/) | Five short ADRs: change feed, outbox, reconcile-before-resend, SQLite, API keys |
+| [`requests.http`](requests.http) | Ready-to-run requests for VS Code (REST Client), Rider or Visual Studio |
+| API reference | Interactive Scalar page at `/scalar/v1` with realistic examples (Development) |
+
 ## What it demonstrates
 
 | Area | How |
@@ -32,9 +47,13 @@ flowchart LR
 | **API security** | Scoped API keys (stored as SHA‑256 hashes, compared in constant time, validated at startup); orders isolated per client (another client's order id is a 404); rate limiting per client, and per IP for unauthenticated calls; a 256 KB request limit; security headers; no server banner; and no exception details in responses. |
 | **Background processing** | Hosted services: a scheduler with on-demand triggers (`Channel<T>`), and an outbox dispatcher that wakes on new orders and sleeps until the next retry is due. |
 | **Observability** | Structured logging (Serilog, source-generated `LoggerMessage`), trace ids on every request, sync run and order delivery (propagated to the ERP via W3C `traceparent`), metrics via `System.Diagnostics.Metrics`, and liveness/readiness health checks. |
-| **Quality** | 47 tests (domain, component tests on real SQLite, and HTTP integration tests), analyzers at `latest-recommended` with warnings as errors, central package management, CI with a vulnerable-package check, Docker images, and Dependabot. |
+| **Quality** | 71 tests (domain, component tests on real SQLite, ERP-adapter tests, and HTTP integration tests) with about 73% line coverage, reported on every CI run. Also: analyzers at `latest-recommended` with warnings as errors, central package management, a vulnerable-package check, Docker images, and Dependabot. |
 
 ## Quick start
+
+**Option 0: GitHub Codespaces** (nothing to install)
+
+Click **Open in GitHub Codespaces** above. The container builds the solution, starts the mock ERP and the API, and forwards the API reference on port 5100. Codespaces usage counts against the visitor's own GitHub quota.
 
 **Option A: Docker** (no .NET SDK needed)
 
@@ -182,8 +201,11 @@ echo -n "$KEY" | sha256sum | cut -d' ' -f1   # → KeyHash
 ## Testing
 
 ```bash
-dotnet test
+dotnet test                                                   # 71 tests (Microsoft.Testing.Platform + xUnit v3)
+dotnet test -- --coverage --coverage-output-format cobertura  # with code coverage
 ```
+
+CI publishes a coverage summary on every run (about **73% line / 66% branch** coverage, excluding generated code and migrations). The main untested code is the two `BackgroundService` loops, which only schedule work; the logic they call is covered.
 
 * **Domain tests:** invariants such as out-of-order updates, checkpoints that can't move backwards, and the order state machine.
 * **Component tests:** the real services and EF Core mappings on in-memory SQLite, with a fake ERP and a `FakeTimeProvider`. They cover:
@@ -192,6 +214,7 @@ dotnet test
   * retry and backoff
   * reconciliation after a lost response (asserting the ERP received exactly one create call), and reconcile-before-fail on the last attempt
   * the concurrency token rejecting a second claim
+* **ERP adapter tests:** HTTP statuses and transport failures mapped to *rejected*, *unavailable* or *outcome unknown* (including 409 on create and dropped connections), keyset query building, idempotency headers, token caching with a refresh margin, one shared refresh for concurrent callers, and a single retry after a 401.
 * **Integration tests:** the full API over HTTP, covering 401 and 403 by scope, isolation of orders between clients, 429 rate limiting (including unauthenticated callers), 400/409/422 problem responses, security headers, and an order going from `202` to `submitted`.
 
 ## Production notes
