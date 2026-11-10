@@ -1,0 +1,85 @@
+### ERP Sync Connector: ready-to-run requests
+# Works in Visual Studio, JetBrains Rider and VS Code (REST Client extension).
+# Start the mock ERP and the API first (see README), then send these top to bottom.
+# The key below is the local demo key from appsettings.Development.json.
+
+@baseUrl = http://localhost:5100
+@apiKey = dev-local-key-change-me
+
+### Health: public, no key needed
+GET {{baseUrl}}/health/ready
+
+### 1. Catalog: first page of active products
+GET {{baseUrl}}/api/v1/products?page=1&pageSize=10&isActive=true
+X-Api-Key: {{apiKey}}
+
+### 2. Catalog: search by name or SKU
+GET {{baseUrl}}/api/v1/products?search=pump
+X-Api-Key: {{apiKey}}
+
+### 3. Catalog: one product with stock per warehouse
+GET {{baseUrl}}/api/v1/products/SKU-00001
+X-Api-Key: {{apiKey}}
+
+### 4. Catalog: a customer and its open balance
+GET {{baseUrl}}/api/v1/customers/C0001
+X-Api-Key: {{apiKey}}
+
+### 5. Orders: place an order (202 Accepted + Location)
+# Change the Idempotency-Key for every new order; resending the same key returns the original order.
+# @name createOrder
+POST {{baseUrl}}/api/v1/sales-orders
+X-Api-Key: {{apiKey}}
+Content-Type: application/json
+Idempotency-Key: po-2026-1001
+
+{
+  "customerCode": "C0001",
+  "customerReference": "PO-2026-1001",
+  "lines": [
+    { "sku": "SKU-00001", "quantity": 2 },
+    { "sku": "SKU-00002", "quantity": 1.5 }
+  ]
+}
+
+### 6. Orders: poll the order until status is "submitted"
+GET {{baseUrl}}/api/v1/sales-orders/{{createOrder.response.body.$.id}}
+X-Api-Key: {{apiKey}}
+
+### 7. Orders: same key, different order → 409 Conflict
+POST {{baseUrl}}/api/v1/sales-orders
+X-Api-Key: {{apiKey}}
+Content-Type: application/json
+Idempotency-Key: po-2026-1001
+
+{
+  "customerCode": "C0001",
+  "lines": [ { "sku": "SKU-00003", "quantity": 9 } ]
+}
+
+### 8. Orders: blocked customer and unknown product → 422 with per-field errors
+# C0013 is seeded as inactive in the mock ERP.
+POST {{baseUrl}}/api/v1/sales-orders
+X-Api-Key: {{apiKey}}
+Content-Type: application/json
+Idempotency-Key: po-2026-1002
+
+{
+  "customerCode": "C0013",
+  "lines": [ { "sku": "NOT-A-SKU", "quantity": 1 } ]
+}
+
+### 9. Sync: ask the worker to sync stock now
+POST {{baseUrl}}/api/v1/sync/stock/run
+X-Api-Key: {{apiKey}}
+
+### 10. Sync: recent runs (fetched / changed / skipped counts, trace ids)
+GET {{baseUrl}}/api/v1/sync/runs?take=10
+X-Api-Key: {{apiKey}}
+
+### 11. Sync: how far each change feed has been read
+GET {{baseUrl}}/api/v1/sync/checkpoints
+X-Api-Key: {{apiKey}}
+
+### 12. Security: no key → 401 problem details
+GET {{baseUrl}}/api/v1/products
