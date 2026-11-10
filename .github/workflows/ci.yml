@@ -24,8 +24,27 @@ jobs:
       - name: Build (warnings are errors)
         run: dotnet build --no-restore -c Release
 
-      - name: Test
-        run: dotnet test --no-build -c Release
+      - name: Test (with code coverage)
+        run: dotnet test --no-build -c Release -- --coverage --coverage-output-format cobertura
+
+      - name: Coverage report
+        if: always()
+        run: |
+          dotnet tool restore
+          dotnet reportgenerator \
+            "-reports:**/TestResults/**/*.cobertura.xml" \
+            -targetdir:coverage-report \
+            "-reporttypes:MarkdownSummaryGithub;Cobertura" \
+            "-assemblyfilters:+ErpSync.Domain;+ErpSync.Application;+ErpSync.Infrastructure;+ErpSync.Api" \
+            "-classfilters:-ErpSync.Infrastructure.Persistence.Migrations.*;-Microsoft.*;-System.*"
+          cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report/
 
       - name: Fail on known-vulnerable packages
         run: |
